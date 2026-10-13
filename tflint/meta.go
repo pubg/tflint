@@ -7,7 +7,7 @@ import (
 )
 
 // Version uses build metadata to identify the fork while preserving version constraint matching.
-var Version *version.Version = version.Must(version.NewVersion("0.64.0+inherit.1"))
+var Version *version.Version = version.Must(version.NewVersion("0.64.0+inherit.2"))
 
 // ReferenceLink returns the rule reference link
 func ReferenceLink(name string) string {
