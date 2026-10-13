@@ -146,6 +146,18 @@ over plain HTTP. Missing files are ignored; invalid files are errors.
 This intentionally supports only these two files, not Terraform's full CLI
 configuration, `TF_TOKEN_*` variables, or credential helpers.
 
+To see which configurations are inherited, enable debug logging:
+
+```sh
+TFLINT_LOG=debug tflint
+```
+
+The logs show inherited local file paths, remote request URLs and inheritance
+depth, HTTP response status codes, and successful download sizes. Depth 1 is the
+current configuration's parent. Each nested `inherit_from` is logged separately.
+URL userinfo, query strings, and fragments are omitted from these messages to
+avoid exposing credentials; request headers and response bodies are not logged.
+
 ### `required_version`
 
 Restrict the TFLint version used. This is almost the same as [Terraform's `required_version`](https://developer.hashicorp.com/terraform/language/settings#specifying-a-required-terraform-version).
