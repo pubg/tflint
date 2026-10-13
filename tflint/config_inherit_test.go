@@ -1,7 +1,9 @@
 package tflint
 
 import (
+	"bytes"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -280,4 +282,81 @@ func TestLoadConfigRemoteInheritanceErrors(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestLoadConfigInheritanceLogs(t *testing.T) {
+	var output bytes.Buffer
+	previousWriter, previousFlags := log.Writer(), log.Flags()
+	log.SetOutput(&output)
+	log.SetFlags(0)
+	t.Cleanup(func() {
+		log.SetOutput(previousWriter)
+		log.SetFlags(previousFlags)
+	})
+
+	const parent = "# confidential-body-comment\nconfig { force = true }"
+	const child = `config { inherit_from = "parent.hcl?token=nested-query-secret#fragment-secret" }`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/start":
+			http.Redirect(w, r, "/base.hcl?token=redirect-query-secret", http.StatusFound)
+		case "/base.hcl":
+			fmt.Fprint(w, child)
+		case "/parent.hcl":
+			fmt.Fprint(w, parent)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	t.Run("nested inheritance and redacted URLs", func(t *testing.T) {
+		output.Reset()
+		withUserinfo := strings.Replace(server.URL, "://", "://username-secret:password-secret@", 1)
+		files := map[string]string{
+			"root.hcl":  `config { inherit_from = "local.hcl" }`,
+			"local.hcl": fmt.Sprintf("config { inherit_from = %q }", withUserinfo+"/start?token=initial-query-secret#fragment-secret"),
+		}
+		cfg, err := LoadConfig(inheritanceFS(t, files), "root.hcl")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !cfg.Force {
+			t.Fatal("nested inherited configuration was not applied")
+		}
+		logs := output.String()
+		for _, want := range []string{
+			"[DEBUG] Load inherited config file: local.hcl (depth=1)",
+			fmt.Sprintf("[DEBUG] Download inherited config: %s/start (depth=2)", server.URL),
+			fmt.Sprintf("[DEBUG] Inherited config response: %s/base.hcl (status=200)", server.URL),
+			fmt.Sprintf("[DEBUG] Downloaded inherited config: %s/base.hcl (%d bytes)", server.URL, len(child)),
+			fmt.Sprintf("[DEBUG] Download inherited config: %s/parent.hcl (depth=3)", server.URL),
+			fmt.Sprintf("[DEBUG] Downloaded inherited config: %s/parent.hcl (%d bytes)", server.URL, len(parent)),
+		} {
+			if !strings.Contains(logs, want) {
+				t.Errorf("missing log %q in:\n%s", want, logs)
+			}
+		}
+		for _, secret := range []string{"username-secret", "password-secret", "initial-query-secret", "redirect-query-secret", "nested-query-secret", "fragment-secret", "confidential-body-comment"} {
+			if strings.Contains(logs, secret) {
+				t.Errorf("debug logs exposed %q", secret)
+			}
+		}
+	})
+
+	t.Run("failed response", func(t *testing.T) {
+		output.Reset()
+		files := map[string]string{
+			"root.hcl": fmt.Sprintf("config { inherit_from = %q }", server.URL+"/missing.hcl?token=initial-query-secret"),
+		}
+		_, err := LoadConfig(inheritanceFS(t, files), "root.hcl")
+		if err == nil {
+			t.Fatal("expected a download failure")
+		}
+		logs := output.String()
+		want := fmt.Sprintf("[DEBUG] Inherited config response: %s/missing.hcl (status=404)", server.URL)
+		if !strings.Contains(logs, want) || strings.Contains(logs, "Downloaded inherited config:") || strings.Contains(logs, "initial-query-secret") {
+			t.Fatalf("unexpected failed download logs:\n%s", logs)
+		}
+	})
 }

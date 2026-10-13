@@ -3,6 +3,7 @@ package tflint
 import (
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -158,11 +159,13 @@ func (l *configLoader) loadParent(name string, remote *url.URL, reference string
 	if l.loading[ref.String()] {
 		return nil, fmt.Errorf("circular config inheritance: %s", ref)
 	}
+	log.Printf("[DEBUG] Download inherited config: %s (depth=%d)", configURLForLog(ref), len(l.loading))
 	response, err := l.client.Get(ref.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to download inherited config: %w", err)
 	}
 	defer response.Body.Close()
+	log.Printf("[DEBUG] Inherited config response: %s (status=%d)", configURLForLog(response.Request.URL), response.StatusCode)
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to download inherited config %s: %s", ref, response.Status)
 	}
@@ -173,14 +176,27 @@ func (l *configLoader) loadParent(name string, remote *url.URL, reference string
 	if len(src) > maxRemoteConfigSize {
 		return nil, fmt.Errorf("inherited config %s exceeds %d bytes", ref, maxRemoteConfigSize)
 	}
+	log.Printf("[DEBUG] Downloaded inherited config: %s (%d bytes)", configURLForLog(response.Request.URL), len(src))
 	// Relative references in a redirected config use its final URL.
 	return l.load(response.Request.URL.String(), response.Request.URL, src)
 }
 
 func (l *configLoader) loadLocal(name string) (hcl.Body, error) {
+	log.Printf("[DEBUG] Load inherited config file: %s (depth=%d)", name, len(l.loading))
 	src, err := l.fs.ReadFile(name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read inherited config: %w", err)
 	}
 	return l.load(name, nil, src)
+}
+
+func configURLForLog(ref *url.URL) string {
+	// URL userinfo and query parameters may contain credentials.
+	safe := *ref
+	safe.User = nil
+	safe.RawQuery = ""
+	safe.ForceQuery = false
+	safe.Fragment = ""
+	safe.RawFragment = ""
+	return safe.String()
 }
