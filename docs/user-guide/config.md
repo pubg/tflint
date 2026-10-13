@@ -87,6 +87,54 @@ tflint --recursive --config "$(pwd)/.tflint.hcl"
 tflint --recursive --config "$(pwd)/.tflint.json"
 ```
 
+### `inherit_from`
+
+Load a shared configuration before applying the current file. The value is a single
+local file path or HTTP(S) URL pointing to the configuration file's contents:
+
+```hcl
+config {
+  inherit_from = "https://example.com/tflint/v1/base.hcl"
+}
+
+plugin "terraform" {
+  preset = "recommended"
+}
+
+rule "terraform_naming_convention" {
+  enabled = false
+}
+```
+
+The inherited file may use HCL or JSON and may itself declare `inherit_from`.
+Relative local paths are resolved against the file declaring them. Relative
+references in remote configurations are resolved against their URL, including
+redirects; they cannot read local files. For example, `inherit_from = "../base.hcl"`
+loads a file next to the declaring file's parent directory.
+
+Inheritance applies to the entire configuration, including `plugin` and `rule`
+blocks. The current file overrides the inherited file, and CLI options keep their
+existing precedence:
+
+- Omitted attributes keep their inherited values. Explicit values, including
+  `false`, empty lists and empty maps, replace inherited values.
+- Top-level blocks with the same type and labels are merged by attribute. A
+  project can override a plugin's `version` or a rule's options without repeating
+  its other attributes, including `enabled`.
+- Lists and maps are replaced as a whole. Nested blocks with the same type and
+  labels are replaced as a group, rather than merged recursively.
+- Every file's `tflint.required_version` constraint must be satisfied.
+
+Other relative paths, such as `varfile` and `plugin_dir`, keep their existing
+meaning and are not resolved against the inherited file or downloaded.
+The bundled Terraform plugin's defaults are applied after inheritance.
+
+Remote configurations are fetched each time the configuration is loaded,
+including during `tflint --init`. Pin URLs to an immutable commit or release for
+repeatable results. Downloads have a 30-second timeout and a 1 MiB size limit.
+Download failures, invalid configurations, circular references, and inheritance
+chains longer than 32 files are errors.
+
 ### `required_version`
 
 Restrict the TFLint version used. This is almost the same as [Terraform's `required_version`](https://developer.hashicorp.com/terraform/language/settings#specifying-a-required-terraform-version).

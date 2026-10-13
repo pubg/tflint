@@ -12,7 +12,6 @@ import (
 	"github.com/hashicorp/go-version"
 	hcl "github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/gohcl"
-	"github.com/hashicorp/hcl/v2/hclparse"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/afero"
@@ -47,6 +46,7 @@ var configSchema = &hcl.BodySchema{
 
 var innerConfigSchema = &hcl.BodySchema{
 	Attributes: []hcl.AttributeSchema{
+		{Name: "inherit_from"},
 		{Name: "call_module_type"},
 		{Name: "force"},
 		{Name: "ignore_module"},
@@ -110,6 +110,7 @@ type Config struct {
 
 	sources    map[string][]byte
 	configPath string
+	usesJSON   bool
 }
 
 // RuleConfig is a TFLint's rule config
@@ -192,7 +193,7 @@ func LoadConfig(fs afero.Afero, file string) (*Config, error) {
 			return nil, fmt.Errorf("failed to load file: %w", err)
 		}
 		defer f.Close()
-		cfg, err := loadConfig(f)
+		cfg, err := loadConfig(fs, f)
 		if err != nil {
 			return nil, err
 		}
@@ -208,7 +209,7 @@ func LoadConfig(fs afero.Afero, file string) (*Config, error) {
 			return nil, fmt.Errorf("failed to load file: %w", err)
 		}
 		defer f.Close()
-		cfg, err := loadConfig(f)
+		cfg, err := loadConfig(fs, f)
 		if err != nil {
 			return nil, err
 		}
@@ -219,7 +220,7 @@ func LoadConfig(fs afero.Afero, file string) (*Config, error) {
 	log.Printf("[INFO] Load config: %s", defaultConfigFile)
 	if f, err := fs.Open(defaultConfigFile); err == nil {
 		defer f.Close()
-		cfg, err := loadConfig(f)
+		cfg, err := loadConfig(fs, f)
 		if err != nil {
 			return nil, err
 		}
@@ -231,7 +232,7 @@ func LoadConfig(fs afero.Afero, file string) (*Config, error) {
 	log.Printf("[INFO] Load config: %s", defaultConfigFileJSON)
 	if f, err := fs.Open(defaultConfigFileJSON); err == nil {
 		defer f.Close()
-		cfg, err := loadConfig(f)
+		cfg, err := loadConfig(fs, f)
 		if err != nil {
 			return nil, err
 		}
@@ -247,7 +248,7 @@ func LoadConfig(fs afero.Afero, file string) (*Config, error) {
 	log.Printf("[INFO] Load config: %s", fallback)
 	if f, err := fs.Open(fallback); err == nil {
 		defer f.Close()
-		cfg, err := loadConfig(f)
+		cfg, err := loadConfig(fs, f)
 		if err != nil {
 			return nil, err
 		}
@@ -263,7 +264,7 @@ func LoadConfig(fs afero.Afero, file string) (*Config, error) {
 	log.Printf("[INFO] Load config: %s", fallbackJSON)
 	if f, err := fs.Open(fallbackJSON); err == nil {
 		defer f.Close()
-		cfg, err := loadConfig(f)
+		cfg, err := loadConfig(fs, f)
 		if err != nil {
 			return nil, err
 		}
@@ -276,41 +277,22 @@ func LoadConfig(fs afero.Afero, file string) (*Config, error) {
 	return EmptyConfig().enableBundledPlugin(), nil
 }
 
-func loadConfig(file afero.File) (*Config, error) {
-	src, err := afero.ReadAll(file)
+func loadConfig(fs afero.Afero, file afero.File) (*Config, error) {
+	body, sources, usesJSON, err := loadConfigBody(fs, file)
 	if err != nil {
 		return nil, err
 	}
 
 	config := EmptyConfig()
 	config.configPath = file.Name()
+	config.usesJSON = usesJSON
 
-	parser := hclparse.NewParser()
-	var f *hcl.File
-	var diags hcl.Diagnostics
-
-	// Parse based on file extension
-	switch filepath.Ext(file.Name()) {
-	case ".json":
-		f, diags = parser.ParseJSON(src, file.Name())
-	default:
-		f, diags = parser.ParseHCL(src, file.Name())
-	}
-
+	content, diags := body.Content(configSchema)
 	if diags.HasErrors() {
 		return nil, diags
 	}
 
-	if diags := checkVersionRequirement(f.Body); diags.HasErrors() {
-		return nil, diags
-	}
-
-	content, diags := f.Body.Content(configSchema)
-	if diags.HasErrors() {
-		return nil, diags
-	}
-
-	config.sources = parser.Sources()
+	config.sources = sources
 	for _, block := range content.Blocks {
 		switch block.Type {
 		case "tflint":
@@ -324,6 +306,8 @@ func loadConfig(file afero.File) (*Config, error) {
 
 			for name, attr := range inner.Attributes {
 				switch name {
+				case "inherit_from":
+					// Resolved before decoding, so inherited required attributes are available.
 				case "call_module_type":
 					var callModuleType string
 					config.CallModuleTypeSet = true
@@ -560,9 +544,9 @@ func (c *Config) enableBundledPlugin() *Config {
 	return c
 }
 
-// IsJSONConfig returns true if the configuration was loaded from a JSON file
+// IsJSONConfig returns true if any configuration in the inheritance chain uses JSON.
 func (c *Config) IsJSONConfig() bool {
-	return filepath.Ext(c.configPath) == ".json"
+	return c.usesJSON || filepath.Ext(c.configPath) == ".json"
 }
 
 // Sources returns parsed config file sources.
