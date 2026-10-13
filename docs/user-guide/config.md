@@ -135,6 +135,17 @@ repeatable results. Downloads have a 30-second timeout and a 1 MiB size limit.
 Download failures, invalid configurations, circular references, and inheritance
 chains longer than 32 files are errors.
 
+For HTTPS URLs, TFLint reuses Terraform's credential file formats: a matching
+`token` in `~/.terraform.d/credentials.tfrc.json` is sent as Bearer authentication;
+otherwise, credentials from `~/.netrc` are sent as HTTP Basic authentication.
+`NETRC` overrides the netrc path. On Windows, the defaults are
+`%APPDATA%/terraform.d/credentials.tfrc.json` and `%USERPROFILE%/_netrc`.
+Existing URL authentication takes precedence. Credentials are looked up for each
+request's host, including redirects, and file-based credentials are never sent
+over plain HTTP. Missing files are ignored; invalid files are errors.
+This intentionally supports only these two files, not Terraform's full CLI
+configuration, `TF_TOKEN_*` variables, or credential helpers.
+
 ### `required_version`
 
 Restrict the TFLint version used. This is almost the same as [Terraform's `required_version`](https://developer.hashicorp.com/terraform/language/settings#specifying-a-required-terraform-version).

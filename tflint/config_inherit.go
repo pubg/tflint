@@ -30,8 +30,11 @@ type configLoader struct {
 
 func loadConfigBody(fs afero.Afero, file afero.File) (hcl.Body, map[string][]byte, bool, error) {
 	loader := &configLoader{
-		fs:      fs,
-		client:  &http.Client{Timeout: 30 * time.Second},
+		fs: fs,
+		client: &http.Client{
+			Timeout:   30 * time.Second,
+			Transport: &configCredentialsTransport{fs: fs, base: http.DefaultTransport},
+		},
 		loading: map[string]bool{},
 		sources: map[string][]byte{},
 	}

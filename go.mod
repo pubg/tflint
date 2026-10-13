@@ -5,6 +5,7 @@ go 1.26.5
 require (
 	github.com/agext/levenshtein v1.2.3
 	github.com/apparentlymart/go-cidr v1.1.1
+	github.com/bgentry/go-netrc v0.0.0-20140422174119-9fd32a8b3d3d
 	github.com/bmatcuk/doublestar v1.1.5
 	github.com/fatih/color v1.19.0
 	github.com/go-test/deep v1.1.1
@@ -16,6 +17,7 @@ require (
 	github.com/hashicorp/go-version v1.9.0
 	github.com/hashicorp/hcl/v2 v2.25.0
 	github.com/hashicorp/logutils v1.0.0
+	github.com/hashicorp/terraform-svchost v0.1.1
 	github.com/jessevdk/go-flags v1.6.1
 	github.com/jstemmer/go-junit-report v1.0.0
 	github.com/klauspost/compress v1.20.1
@@ -73,7 +75,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.36.2 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.42.3 // indirect
 	github.com/aws/smithy-go v1.26.0 // indirect
-	github.com/bgentry/go-netrc v0.0.0-20140422174119-9fd32a8b3d3d // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -124,7 +125,6 @@ require (
 	github.com/hashicorp/go-getter v1.8.6 // indirect
 	github.com/hashicorp/go-hclog v1.6.3 // indirect
 	github.com/hashicorp/terraform-registry-address v0.4.0 // indirect
-	github.com/hashicorp/terraform-svchost v0.1.1 // indirect
 	github.com/hashicorp/yamux v0.1.2 // indirect
 	github.com/in-toto/attestation v1.2.0 // indirect
 	github.com/in-toto/in-toto-golang v0.11.0 // indirect
