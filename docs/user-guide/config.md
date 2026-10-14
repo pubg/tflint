@@ -145,6 +145,8 @@ request's host, including redirects, and file-based credentials are never sent
 over plain HTTP. Missing files are ignored; invalid files are errors.
 This intentionally supports only these two files, not Terraform's full CLI
 configuration, `TF_TOKEN_*` variables, or credential helpers.
+The same lookup is used for [plugin installation](plugins.md#shared-credential-files),
+after any applicable legacy GitHub or GitLab token environment variables.
 
 To see which configurations are inherited, enable debug logging:
 

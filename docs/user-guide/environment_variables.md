@@ -12,6 +12,9 @@ Below is a list of environment variables available in TFLint.
   - Disable version update notifications when running `tflint --version`. Set to `1` to disable.
 - `GITHUB_TOKEN`
   - (Optional) Used for authenticated GitHub API requests when checking for updates and downloading plugins. Increases the rate limit from 60 to 5000 requests per hour. Useful if you encounter rate limit errors. You can obtain a token by creating a [GitHub personal access token](https://github.com/settings/tokens); no special scopes are required.
+  - For plugin installation, this legacy variable takes precedence over [shared credential files](./plugins.md#shared-credential-files). Host-specific `GITHUB_TOKEN_<host>` variables are also supported.
+- `GITLAB_TOKEN`
+  - (Optional) Used for GitLab plugin installation, before shared credential files. Host-specific `GITLAB_TOKEN_<host>` variables are also supported. See [GitLab authentication](./plugins.md#gitlab) for the full lookup order, including `CI_JOB_TOKEN`.
 - `TFLINT_EXPERIMENTAL`
   - Enable experimental features. Note that experimental features are subject to change without notice. Currently there is no impact.
 - `TF_VAR_name`

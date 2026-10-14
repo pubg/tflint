@@ -28,13 +28,19 @@ func (t *configCredentialsTransport) RoundTrip(req *http.Request) (*http.Respons
 		return t.base.RoundTrip(req)
 	}
 	request := req.Clone(req.Context())
-	if err := prepareConfigCredentials(t.fs, request); err != nil {
+	if err := PrepareRequestCredentials(t.fs, request, request.URL.Host); err != nil {
 		return nil, err
 	}
 	return t.base.RoundTrip(request)
 }
 
-func prepareConfigCredentials(fs afero.Afero, req *http.Request) error {
+// PrepareRequestCredentials applies Terraform JSON or netrc credentials for host
+// to an HTTPS request. An existing Authorization header takes precedence.
+// The host can differ from the request URL when a service uses a separate API host.
+func PrepareRequestCredentials(fs afero.Afero, req *http.Request, host string) error {
+	if req.URL.Scheme != "https" || req.Header.Get("Authorization") != "" {
+		return nil
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return err
@@ -65,7 +71,7 @@ func prepareConfigCredentials(fs afero.Afero, req *http.Request) error {
 			// Parser errors can contain credential values; report only the file.
 			return fmt.Errorf("invalid JSON credentials file %q", filename)
 		}
-		host, err := svchost.ForComparison(svchost.ForDisplay(req.URL.Host))
+		host, err := svchost.ForComparison(svchost.ForDisplay(host))
 		if err == nil {
 			for givenHost, credential := range credentials.Credentials {
 				candidate, err := svchost.ForComparison(svchost.ForDisplay(givenHost))
@@ -90,7 +96,7 @@ func prepareConfigCredentials(fs afero.Afero, req *http.Request) error {
 	if err != nil {
 		return fmt.Errorf("invalid netrc credentials file %q", filename)
 	}
-	if machine := credentials.FindMachine(req.URL.Host); machine != nil {
+	if machine := credentials.FindMachine(host); machine != nil {
 		req.SetBasicAuth(machine.Login, machine.Password)
 	}
 	return nil

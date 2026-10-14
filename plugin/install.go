@@ -554,6 +554,16 @@ func newGitHubClient(ctx context.Context, config *InstallConfig) (*github.Client
 		hc = oauth2.NewClient(ctx, oauth2.StaticTokenSource(&oauth2.Token{
 			AccessToken: t,
 		}))
+	} else {
+		apiHost := config.SourceHost
+		if apiHost == defaultSourceHost {
+			apiHost = "api.github.com"
+		}
+		hc.Transport = &pluginCredentialsTransport{
+			RoundTripper: hc.Transport,
+			sourceHost:   config.SourceHost,
+			apiHost:      apiHost,
+		}
 	}
 
 	hc.Transport = &requestLoggingTransport{hc.Transport}

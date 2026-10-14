@@ -41,6 +41,7 @@ func TestInstallGitLab(t *testing.T) {
 
 	tests := []struct {
 		name          string
+		credential    string
 		signature     string
 		omitKey       bool
 		missingAsset  string
@@ -57,6 +58,9 @@ func TestInstallGitLab(t *testing.T) {
 		unverified    bool
 	}{
 		{name: "PGP", signature: "pgp"},
+		{name: "JSON credentials", credential: "json", signature: "pgp"},
+		{name: "netrc credentials", credential: "netrc", signature: "pgp"},
+		{name: "CI job token precedes file credentials", credential: "job", signature: "pgp"},
 		{name: "auto with signing key"},
 		{name: "auto without signing key", omitKey: true, unverified: true},
 		{name: "signature disabled", signature: "none", omitKey: true, unverified: true},
@@ -76,8 +80,28 @@ func TestInstallGitLab(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Setenv("GITLAB_TOKEN", "test-token")
-			t.Setenv("GITLAB_TOKEN_gitlab_example_com", "test-token")
+			jsonPath, netrcPath := pluginCredentialPaths(t)
+			wantHeader, wantToken := "PRIVATE-TOKEN", "test-token"
+			switch test.credential {
+			case "json", "job":
+				if err := os.WriteFile(jsonPath, []byte(`{"credentials":{"gitlab.example.com":{"token":"file-token"}}}`), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				wantHeader, wantToken = "Authorization", "Bearer file-token"
+				if test.credential == "job" {
+					t.Setenv("CI_JOB_TOKEN", "job-token")
+					t.Setenv("CI_SERVER_URL", "https://gitlab.example.com")
+					wantHeader, wantToken = "JOB-TOKEN", "job-token"
+				}
+			case "netrc":
+				if err := os.WriteFile(netrcPath, []byte("machine gitlab.example.com login user password pass"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				wantHeader, wantToken = "Authorization", "Basic dXNlcjpwYXNz"
+			default:
+				t.Setenv("GITLAB_TOKEN", "test-token")
+				t.Setenv("GITLAB_TOKEN_gitlab_example_com", "test-token")
+			}
 			globalConfig := tflint.EmptyConfig()
 			globalConfig.PluginDir = t.TempDir()
 			config := NewInstallConfig(globalConfig, &tflint.PluginConfig{
@@ -132,10 +156,16 @@ func TestInstallGitLab(t *testing.T) {
 				delete(files, test.missingAsset)
 			}
 			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Header.Get("PRIVATE-TOKEN") != "test-token" || r.Header.Get("JOB-TOKEN") != "" {
-					t.Error("incorrect GitLab authentication")
-					w.WriteHeader(http.StatusUnauthorized)
-					return
+				for _, header := range []string{"Authorization", "PRIVATE-TOKEN", "JOB-TOKEN"} {
+					want := ""
+					if header == wantHeader {
+						want = wantToken
+					}
+					if r.Header.Get(header) != want {
+						t.Error("incorrect GitLab authentication")
+						w.WriteHeader(http.StatusUnauthorized)
+						return
+					}
 				}
 				if strings.HasPrefix(r.URL.Path, "/api/v4/projects/") {
 					if r.URL.EscapedPath() != "/api/v4/projects/group%2Fsubgroup%2Ftflint-ruleset-example/releases/v0.1.0" {
@@ -267,6 +297,7 @@ func TestGitLabAuthentication(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			pluginCredentialPaths(t)
 			for _, variable := range []string{"GITLAB_TOKEN", "GITLAB_TOKEN_gitlab_example_com", "GITLAB_TOKEN_other_example_com", "CI_JOB_TOKEN", "CI_SERVER_URL", "GITHUB_TOKEN"} {
 				t.Setenv(variable, "")
 			}

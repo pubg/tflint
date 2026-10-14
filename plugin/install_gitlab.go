@@ -83,6 +83,13 @@ func newGitLabClient(config *InstallConfig) *http.Client {
 			transport.token = os.Getenv("CI_JOB_TOKEN")
 		}
 	}
+	if transport.token == "" {
+		transport.RoundTripper = &pluginCredentialsTransport{
+			RoundTripper: transport.RoundTripper,
+			sourceHost:   config.SourceHost,
+			apiHost:      config.SourceHost,
+		}
+	}
 	return &http.Client{Transport: transport}
 }
 

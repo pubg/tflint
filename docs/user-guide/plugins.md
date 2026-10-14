@@ -88,17 +88,39 @@ If you want to change the plugin directory, you can change this with the [`plugi
 
 ## Authentication and rate limits
 
+### Shared credential files
+
+Plugin installation reuses the same credential lookup as [remote configuration inheritance](config.md#inherit_from). Existing GitHub and GitLab token environment variables take precedence for backward compatibility. When no applicable environment token is set, TFLint checks:
+
+1. A matching host token in `~/.terraform.d/credentials.tfrc.json` (Bearer authentication).
+2. A matching entry in `~/.netrc` (HTTP Basic authentication).
+
+For example, the same GitLab token can download both inherited configuration and plugins:
+
+```json
+{
+  "credentials": {
+    "gitlab.example.com": { "token": "<access-token>" },
+    "github.com": { "token": "<github-token>" }
+  }
+}
+```
+
+Use the plugin source host as the key, including its port if specified. GitHub.com API requests use the `github.com` entry, even though the API host is `api.github.com`. `NETRC` overrides the netrc file path; on Windows, the default paths are `%APPDATA%/terraform.d/credentials.tfrc.json` and `%USERPROFILE%/_netrc`.
+
+Missing files or host entries allow anonymous requests. Invalid credential files stop installation before the request is sent. Once a credential is selected, HTTP failures such as 401 or 404 do not trigger another credential attempt. File credentials are sent only over HTTPS to the source's API host; redirects to another host or port do not receive the source credentials.
+
 ### GitHub
 
-When you install plugins from GitHub with `tflint --init`, TFLint calls the GitHub API to get release metadata. By default, this is an unauthenticated request, subject to a rate limit of 60 requests per hour _per IP address_.
+When you install plugins from GitHub with `tflint --init`, TFLint calls the GitHub API to get release metadata. Without credentials, this is an unauthenticated request, subject to a rate limit of 60 requests per hour _per IP address_.
 
 **Background:** [GitHub REST API: Rate limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)
 
 If you fetch plugins frequently in CI, you may hit this rate limit. If you run TFLint in a shared CI environment such as GitHub Actions, you will share this quota with other tenants and may encounter rate limiting errors regardless of how often you run TFLint.
 
-To increase the rate limit, you can send an authenticated request by authenticating your requests with an access token, by setting the `GITHUB_TOKEN` environment variable. In GitHub Actions, you can pass the built-in `GITHUB_TOKEN` that is injected into each job.
+To increase the rate limit, use a shared credential file or the legacy `GITHUB_TOKEN` environment variable. In GitHub Actions, you can pass the built-in `GITHUB_TOKEN` that is injected into each job. GitHub-specific environment tokens take precedence over shared credential files.
 
-If you host your plugins on GitHub Enterprise Server (GHES), you may need to use a different token than on GitHub.com. In this case, you can use a host-specific token like `GITHUB_TOKEN_example_com`. The hostname must be normalized with Punycode. Use "_" instead of "." and "__" instead of "-".
+If you host your plugins on GitHub Enterprise Server (GHES), you may need to use a different token than on GitHub.com. In this case, you can use a host-specific token like `GITHUB_TOKEN_example_com`. The hostname must be normalized with Punycode. Use "_" instead of "." and "__" instead of "-". An explicitly empty host-specific variable suppresses the global `GITHUB_TOKEN`, preserving the existing behavior; shared credential files can still be used.
 
 ```hcl
 # GITHUB_TOKEN will be used
@@ -123,8 +145,9 @@ For private projects, TFLint selects the first non-empty credential in this orde
 1. `GITLAB_TOKEN_${source_host}`, using the same hostname encoding as `GITHUB_TOKEN_${source_host}`.
 2. `GITLAB_TOKEN`.
 3. `CI_JOB_TOKEN`, only when `CI_SERVER_URL` has the same HTTPS host and port as the plugin source.
+4. Shared credential files: `credentials.tfrc.json`, then netrc.
 
-Access tokens are sent as `PRIVATE-TOKEN`, and CI job tokens as `JOB-TOKEN`. The token must be permitted to read both the release and its assets. Cross-project CI downloads may require the source project to add the consuming project or group to its [job token allowlist](https://docs.gitlab.com/ci/jobs/ci_job_token/).
+Environment access tokens are sent as `PRIVATE-TOKEN`, and CI job tokens as `JOB-TOKEN`. File credentials use the authentication methods described above. The token must be permitted to read both the release and its assets. Cross-project CI downloads may require the source project to add the consuming project or group to its [job token allowlist](https://docs.gitlab.com/ci/jobs/ci_job_token/).
 
 Credentials are only sent to the plugin source's exact HTTPS origin. Asset links and redirects to another host or port are followed without the GitLab token, so external assets must be accessible without it.
 

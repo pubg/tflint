@@ -1,54 +1,39 @@
-## Combined PUBG fork prerelease
+## Shared credentials for plugin installation
 
-This prerelease combines the GitLab plugin installation support from `v0.64.0-pubg.1` with the configuration inheritance, HTTPS credentials, and debug logging from `v0.64.0-inherit.2`, based on upstream TFLint 0.64.0.
+This PUBG fork prerelease extends `v0.64.0-pubg.2` with shared authentication for GitHub and GitLab plugin installation. Configuration inheritance and plugin installation now reuse the same credential-file lookup.
 
-The release tag is `v0.64.0-pubg.2`. The executable reports `0.64.0+pubg.2`, using build metadata to identify the fork while preserving compatibility with existing `required_version` constraints.
+The release tag is `v0.64.0-pubg.3`. The executable reports `0.64.0+pubg.3`, preserving compatibility with existing Terraform-style version constraints.
 
-### GitLab plugin installation
+### Authentication order
 
-```hcl
-plugin "company" {
-  enabled     = true
-  source_type = "gitlab"
-  source      = "gitlab.example.com/group/subgroup/tflint-ruleset-company"
-  version     = "0.1.0"
+1. Existing host-specific and global `GITHUB_TOKEN` or `GITLAB_TOKEN` environment variables. GitLab's matching `CI_JOB_TOKEN` support is also preserved.
+2. A matching token in `~/.terraform.d/credentials.tfrc.json`, sent as Bearer authentication.
+3. Matching credentials in `~/.netrc`, sent as HTTP Basic authentication. `NETRC` can override this path.
+
+For example, this credential can read both an inherited GitLab configuration and GitLab plugin release assets:
+
+```json
+{
+  "credentials": {
+    "gitlab.example.com": { "token": "<access-token>" }
+  }
 }
 ```
 
-Run `tflint --init` to install the plugin from its `v0.1.0` release. Configure a host-specific `GITLAB_TOKEN_<host>` or `GITLAB_TOKEN` for private projects. GitLab CI can use `CI_JOB_TOKEN` when `CI_SERVER_URL` matches the source host. SHA-256 checksums are always verified; configure a PGP signing key for publisher verification. Existing GitHub plugin configurations continue to work.
+For GitHub.com, use `github.com` as the credential key; TFLint applies it to requests to `api.github.com`. Existing host-specific environment-token behavior is unchanged, including empty GitHub host overrides.
 
-See the [plugin documentation](https://github.com/pubg/tflint/blob/v0.64.0-pubg.2/docs/user-guide/plugins.md) for authentication, release assets, and signature settings.
+If a selected credential is rejected, TFLint does not retry with another credential source. File credentials are sent only over HTTPS to the source's API host and are not forwarded to another host or port. Invalid credential files report errors without including their contents.
 
-### Inherit shared configuration
-
-```hcl
-config {
-  inherit_from = "https://example.com/tflint/v1/base.hcl"
-}
-
-rule "terraform_naming_convention" {
-  enabled = false
-}
-```
-
-- Inherit one local file or HTTP(S) URL per configuration, with recursive inheritance in HCL or JSON.
-- Override inherited attributes in the current file, including attributes in matching `plugin` and `rule` blocks. Explicit `false`, empty lists, and empty maps override inherited values.
-- Resolve relative references against the declaring file or remote URL. Detect cycles and limit inheritance to 32 files.
-- Enforce each file's `required_version` constraint. Remote requests have a 30-second timeout and a 1 MiB response limit.
-- For HTTPS requests, read a host's Bearer token from `~/.terraform.d/credentials.tfrc.json`, falling back to HTTP Basic credentials from `~/.netrc`. `NETRC` overrides the netrc path. Credentials are resolved for each request host, including redirects.
-
-GitLab plugin blocks can be inherited from shared configuration, with local overrides such as the plugin version. Set `TFLINT_LOG=debug` to see inherited file paths, remote download URLs, inheritance depth, HTTP status codes, and download sizes. URL userinfo, query strings, fragments, request headers, and response bodies are omitted from these messages.
-
-See the [configuration documentation](https://github.com/pubg/tflint/blob/v0.64.0-pubg.2/docs/user-guide/config.md#inherit_from) for merge rules, Windows paths, and credential behavior. This iteration supports these two credential files; it does not load Terraform CLI configuration, `TF_TOKEN_*`, or credential helpers.
+See the [plugin authentication guide](https://github.com/pubg/tflint/blob/v0.64.0-pubg.3/docs/user-guide/plugins.md#shared-credential-files) and [configuration inheritance guide](https://github.com/pubg/tflint/blob/v0.64.0-pubg.3/docs/user-guide/config.md#inherit_from).
 
 ### Downloads
 
 - Native ZIP archives for macOS, Linux, and Windows are attached. Verify downloads against `checksums.txt`.
-- The container image is `ghcr.io/pubg/tflint:0.64.0-pubg.2`, for `linux/amd64` and `linux/arm64`.
+- The container image is `ghcr.io/pubg/tflint:0.64.0-pubg.3`, for `linux/amd64` and `linux/arm64`.
 - Verify the checksum-file build attestation with `gh attestation verify checksums.txt --repo pubg/tflint`.
 
 ```sh
-docker run --rm -v "$PWD:/data" ghcr.io/pubg/tflint:0.64.0-pubg.2 --version
+docker run --rm -v "$PWD:/data" ghcr.io/pubg/tflint:0.64.0-pubg.3 --version
 ```
 
-These changes have not been merged upstream. GitLab installation is covered by simulated-server tests; installation against a live internal GitLab instance has not been verified.
+These changes have not been merged upstream. Tests cover credential precedence, authentication failures, redirect isolation, and complete GitLab installation against a simulated server. File-based authentication against a live internal GitLab instance has not been verified.
