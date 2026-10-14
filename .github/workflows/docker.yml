@@ -3,7 +3,7 @@ name: docker
 on:
   push:
     tags:
-      - 'v*.*.*-inherit.*'
+      - 'v*.*.*-pubg.*'
   pull_request:
     branches:
       - master
